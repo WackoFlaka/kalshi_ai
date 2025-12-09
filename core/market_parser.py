@@ -1,41 +1,44 @@
 # core/market_parser.py
 
-class ParsedOutcome:
-    def __init__(self, contract_id, ticker, yes_price, no_price, strike=None):
-        self.contract_id = contract_id
-        self.ticker = ticker
-        self.yes_price = yes_price
-        self.no_price = no_price
-        self.strike = strike
+def normalize_market(raw: dict) -> dict:
+    """
+    Convert the NEW Kalshi market JSON into a clean internal format
+    used throughout the AI pipeline.
+    """
 
+    try:
+        ticker = raw.get("ticker")
+        title = raw.get("title", "")
+        subtitle = raw.get("subtitle", "")
 
-class ParsedMarket:
-    def __init__(self, market_id, title, mtype, outcomes):
-        self.market_id = market_id
-        self.title = title
-        self.type = mtype
-        self.outcomes = outcomes
+        yes_bid = raw.get("yes_bid", 0)
+        yes_ask = raw.get("yes_ask", 0)
+        no_bid = raw.get("no_bid", 0)
+        no_ask = raw.get("no_ask", 0)
 
+        market_type = raw.get("market_type", "binary")
+        category = raw.get("category", "")
+        rules = raw.get("rules_primary", "")
 
-def parse_kalshi_market(market_json, contracts_json):
-    m = market_json["market"]
+        close_time = raw.get("close_time")
+        expiration_time = raw.get("expiration_time")
 
-    outcomes = []
+        return {
+            "id": ticker,
+            "title": title,
+            "subtitle": subtitle,
+            "question": title,     # AI uses this
+            "yes_bid": yes_bid,
+            "yes_ask": yes_ask,
+            "no_bid": no_bid,
+            "no_ask": no_ask,
+            "market_type": market_type,
+            "category": category,
+            "rules": rules,
+            "close_time": close_time,
+            "expiration_time": expiration_time,
+        }
 
-    for c in contracts_json.get("contracts", []):
-        outcomes.append(
-            ParsedOutcome(
-                contract_id=c["id"],
-                ticker=c.get("ticker"),
-                yes_price=c.get("yes_bid"),
-                no_price=c.get("no_ask"),
-                strike=c.get("strike")
-            )
-        )
-
-    return ParsedMarket(
-        market_id=m["id"],
-        title=m["title"],
-        mtype=m["type"],
-        outcomes=outcomes
-    )
+    except Exception as e:
+        print("❌ Error normalizing market:", e)
+        return None

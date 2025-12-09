@@ -4,24 +4,32 @@ import json
 import os
 import numpy as np
 
-
 HISTORY_PATH = "data/history.json"
 
 
 def load_history():
-    """Load past predictions."""
+    """Load past predictions safely."""
     if not os.path.exists(HISTORY_PATH):
         return []
 
     try:
         with open(HISTORY_PATH, "r") as f:
             return json.load(f)
-    except:
+    except Exception:
         return []
 
 
 def save_prediction(record: dict):
-    """Save new prediction to history."""
+    """
+    Save a new prediction record:
+      {
+        "question": "...",
+        "prediction": 0.62,
+        "market_price": 0.59,
+        "action": "BUY YES"
+      }
+    """
+
     history = load_history()
     history.append(record)
 
@@ -29,33 +37,61 @@ def save_prediction(record: dict):
         json.dump(history, f, indent=2)
 
 
+def _is_similar(q1: str, q2: str) -> bool:
+    """
+    Lightweight similarity test:
+      - Compare overlapping keywords.
+      - Avoid stopwords.
+    """
+
+    stopwords = {"the", "will", "on", "in", "at", "a", "or", "and", "to", "be"}
+
+    w1 = {w for w in q1.lower().split() if w not in stopwords}
+    w2 = {w for w in q2.lower().split() if w not in stopwords}
+
+    if not w1 or not w2:
+        return False
+
+    overlap = w1.intersection(w2)
+    return len(overlap) >= 1  # at least 1 meaningful word shared
+
+
 def historical_bias_adjustment(question: str, prob: float) -> float:
     """
-    Adjust the AI probability based on past similar predictions.
+    Adjust probability based on historical performance:
+    
+        - If historically overconfident → reduce probability
+        - If historically underconfident → increase probability
 
-    Example:
-    - If past predictions of similar markets were too optimistic, adjust down.
-    - If historically too bearish, adjust upward.
+    Uses:
+        actual_outcome - predicted_probability
+
+    Only considers similar past questions.
     """
 
     history = load_history()
     if not history:
         return prob
 
-    # Select similar markets by keyword overlap
-    related = [h for h in history if any(word in question.lower() for word in h["question"].lower().split())]
+    related = [h for h in history if _is_similar(h["question"], question)]
 
     if not related:
         return prob
 
-    # Compute average error
-    errors = [(r["outcome"] - r["prediction"]) for r in related if "outcome" in r]
+    # Collect outcome errors only from items that have outcomes recorded
+    errors = []
+    for r in related:
+        if "outcome" in r and isinstance(r["outcome"], (int, float)):
+            errors.append(r["outcome"] - r["prediction"])
+
+    # If no scoreable outcomes exist → no adjustment
     if not errors:
         return prob
 
-    bias = np.mean(errors)
+    avg_bias = float(np.mean(errors))
 
-    # Apply small correction
-    adjusted = prob + (bias * 0.1)
+    # Apply mild correction (keeps model stable)
+    adjusted = prob + (avg_bias * 0.15)
 
+    # Clamp to 1–99%
     return max(0.01, min(0.99, adjusted))
