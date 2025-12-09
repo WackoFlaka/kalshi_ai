@@ -1,0 +1,12 @@
+requests
+python-dotenv
+aiohttp
+pydantic
+numpy
+scikit-learn
+pandas
+torch
+sentence-transformers
+rich
+alive-progress
+colorama
